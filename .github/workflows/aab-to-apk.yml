@@ -1,0 +1,68 @@
+
+name: Convert AAB to APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Check AAB
+        run: |
+          if [ ! -f app.aab ]; then
+            echo "ERROR: app.aab not found"
+            exit 1
+          fi
+
+      - name: Download Bundletool
+        run: |
+          VERSION=1.18.3
+          URL="https://github.com/google/bundletool/releases/download/${VERSION}/bundletool-all-${VERSION}.jar"
+          curl -fL "$URL" -o bundletool.jar
+          test -s bundletool.jar
+
+      - name: Generate signing key
+        run: |
+          keytool -genkeypair -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Convert AAB to APK
+        run: |
+          java -jar bundletool.jar build-apks \
+            --bundle=app.aab \
+            --output=app.apks \
+            --mode=universal \
+            --ks=debug.keystore \
+            --ks-pass=pass:android \
+            --ks-key-alias=androiddebugkey \
+            --key-pass=pass:android
+
+          unzip -o app.apks universal.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Converted-APK
+          path: universal.apk
+          retention-days: 7
